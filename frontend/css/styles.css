@@ -114,7 +114,8 @@ body {
   margin-bottom: 4px;
 }
 
-.form-group input {
+.form-group input,
+.form-group select {
   border-radius: 8px;
   border: 1px solid var(--border);
   padding: 8px 10px;
@@ -122,6 +123,22 @@ body {
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
+}
+
+/* ...deixe o resto igual... */
+
+/* Adicione perto de .task-description: */
+.task-meta {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 
 .form-group input:focus {
   border-color: var(--accent);

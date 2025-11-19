@@ -69,12 +69,34 @@
           <label for="task-title">Nova tarefa</label>
           <input type="text" id="task-title" placeholder="Digite o título da tarefa" required />
         </div>
+
         <div class="form-group flex-1">
           <label for="task-description">Descrição (opcional)</label>
           <input type="text" id="task-description" placeholder="Detalhes da tarefa" />
         </div>
+
+        <div class="form-group">
+          <label for="task-data-inicial">Data inicial</label>
+          <input type="date" id="task-data-inicial" />
+        </div>
+
+        <div class="form-group">
+          <label for="task-data-limite">Data limite</label>
+          <input type="date" id="task-data-limite" />
+        </div>
+
+        <div class="form-group">
+          <label for="task-status">Status</label>
+          <select id="task-status">
+            <option value="pendente" selected>Pendente</option>
+            <option value="em_andamento">Em andamento</option>
+            <option value="concluida">Concluída</option>
+          </select>
+        </div>
+
         <button type="submit" class="btn primary">Adicionar</button>
       </form>
+
       <p id="task-message" class="form-message"></p>
 
       <!-- Lista de tarefas -->

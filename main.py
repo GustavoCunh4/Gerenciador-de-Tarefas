@@ -1,15 +1,14 @@
-# main.py
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db import get_db
 import backend.crud as crud
-import backend.models  # só pra garantir que os models sejam carregados
+import backend.models  # garante que os models sejam carregados
 
 
 app = FastAPI(title="Todo List API")
@@ -47,6 +46,9 @@ class TaskBase(BaseModel):
     title: str
     description: Optional[str] = None
     created_at: datetime
+    data_inicial: Optional[datetime] = None
+    data_limite: Optional[datetime] = None
+    status: str
 
     class Config:
         orm_mode = True
@@ -56,6 +58,9 @@ class TaskCreate(BaseModel):
     user_id: int
     title: str
     description: Optional[str] = None
+    data_inicial: Optional[datetime] = None
+    data_limite: Optional[datetime] = None
+    status: Optional[str] = "pendente"
 
 
 @app.post("/register", response_model=UserBase)
@@ -89,6 +94,9 @@ def create_task(task_in: TaskCreate, db: Session = Depends(get_db)):
             user_id=task_in.user_id,
             title=task_in.title,
             description=task_in.description,
+            data_inicial=task_in.data_inicial,
+            data_limite=task_in.data_limite,
+            status=task_in.status,
         )
         return task
     except ValueError as e:

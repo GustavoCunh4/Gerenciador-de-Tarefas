@@ -1,8 +1,11 @@
-# crud.py
-from sqlalchemy.orm import Session
-from werkzeug.security import generate_password_hash, check_password_hash  # ou passlib
-from backend.models import User, Task
 from datetime import datetime
+from typing import List, Optional
+
+from sqlalchemy.orm import Session
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from backend.models import Task, User
+
 
 # ---- Usuários ----
 
@@ -16,7 +19,7 @@ def create_user(db: Session, email: str, password: str) -> User:
 
     user = User(
         email=email,
-        password_hash=generate_password_hash(password)
+        password_hash=generate_password_hash(password),
     )
     db.add(user)
     db.commit()
@@ -24,7 +27,7 @@ def create_user(db: Session, email: str, password: str) -> User:
     return user
 
 
-def authenticate_user(db: Session, email: str, password: str) -> User | None:
+def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
     user = db.query(User).filter_by(email=email).first()
     if not user:
         return None
@@ -32,17 +35,31 @@ def authenticate_user(db: Session, email: str, password: str) -> User | None:
         return None
     return user
 
+
 # ---- Tarefas ----
 
-def create_task(db: Session, user_id: int, title: str, description: str | None = None) -> Task:
+def create_task(
+    db: Session,
+    user_id: int,
+    title: str,
+    description: Optional[str] = None,
+    data_inicial: Optional[datetime] = None,
+    data_limite: Optional[datetime] = None,
+    status: Optional[str] = None,
+) -> Task:
     if not title:
         raise ValueError("Título é obrigatório.")
+
+    now = datetime.utcnow()
 
     task = Task(
         user_id=user_id,
         title=title,
         description=description or "",
-        created_at=datetime.utcnow()
+        created_at=now,
+        data_inicial=data_inicial or now,
+        data_limite=data_limite or now,
+        status=status or "pendente",
     )
     db.add(task)
     db.commit()
@@ -50,7 +67,7 @@ def create_task(db: Session, user_id: int, title: str, description: str | None =
     return task
 
 
-def get_tasks_for_user(db: Session, user_id: int) -> list[Task]:
+def get_tasks_for_user(db: Session, user_id: int) -> List[Task]:
     return (
         db.query(Task)
         .filter(Task.user_id == user_id)

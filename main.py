@@ -1,8 +1,11 @@
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -10,6 +13,9 @@ from backend.db import get_db
 import backend.crud as crud
 import backend.models  # garante que os models sejam carregados
 
+
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR / "frontend"
 
 app = FastAPI(title="Todo List API")
 
@@ -20,6 +26,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Servir arquivos estáticos do frontend pela própria API
+app.mount(
+    "/css",
+    StaticFiles(directory=str(FRONTEND_DIR / "css")),
+    name="css",
+)
+app.mount(
+    "/js",
+    StaticFiles(directory=str(FRONTEND_DIR / "js")),
+    name="js",
+)
+
+
+@app.get("/", response_class=FileResponse)
+def serve_frontend() -> FileResponse:
+    """Serve o arquivo index.html do frontend."""
+    return FileResponse(FRONTEND_DIR / "index.html")
 
 
 class UserBase(BaseModel):

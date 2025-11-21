@@ -3,3 +3,5 @@ sqlalchemy
 uvicorn
 pydantic
 werkzeug
+psycopg[binary]
+python-dotenv

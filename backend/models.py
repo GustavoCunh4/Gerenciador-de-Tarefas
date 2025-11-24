@@ -1,8 +1,10 @@
-# models.py
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
+
 from backend.db import Base
+
 
 class User(Base):
     __tablename__ = "users"
@@ -14,10 +16,6 @@ class User(Base):
 
     tasks = relationship("Task", back_populates="user")
 
-class Status(str, Enum):
-    CONCLUIDO = "Concluído"
-    EM_ANDAMENTO = "Em andamento"
-    NAO_INICIADO = "Não iniciado"
 
 class Task(Base):
     __tablename__ = "tasks"
@@ -30,7 +28,6 @@ class Task(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     data_inicial = Column(DateTime, default=datetime.utcnow, nullable=False)
     data_limite = Column(DateTime, default=datetime.utcnow, nullable=False)
-    status = Column(Enum('Concluído', 'Em andamento', 'Não iniciado', name='status_enum'), nullable=False)
-    
+    status = Column(String(50), default="pendente", nullable=False)
 
     user = relationship("User", back_populates="tasks")

@@ -91,6 +91,14 @@ async function apiCreateTask(
   return handleResponse(response); // tarefa criada
 }
 
+// ---- NOVO: deletar tarefa (DELETE /tasks/{task_id}) ----
+async function apiDeleteTask(taskId) {
+  const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+    method: "DELETE"
+  });
+  return handleResponse(response); // pode vir vazio ou algum json
+}
+
 // ----------------------
 // Inicialização da UI
 // ----------------------
@@ -215,6 +223,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const li = document.createElement("li");
         li.className = "task-item";
 
+        // Header: título + data
         const header = document.createElement("div");
         header.className = "task-item-header";
 
@@ -237,6 +246,7 @@ document.addEventListener("DOMContentLoaded", () => {
         header.appendChild(dateEl);
         li.appendChild(header);
 
+        // Descrição
         if (task.description) {
           const descEl = document.createElement("p");
           descEl.className = "task-description";
@@ -263,6 +273,36 @@ document.addEventListener("DOMContentLoaded", () => {
           metaEl.textContent = metaParts.join(" • ");
           li.appendChild(metaEl);
         }
+
+        // -------- NOVO: botão de apagar --------
+        const actionsEl = document.createElement("div");
+        actionsEl.className = "task-actions";
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "btn btn-delete";
+        deleteBtn.textContent = "🗑";
+        deleteBtn.title = "Apagar tarefa";
+
+        deleteBtn.addEventListener("click", async () => {
+          const confirmar = confirm("Tem certeza que deseja apagar esta tarefa?");
+          if (!confirmar) return;
+
+          clearMessages();
+
+          try {
+            await apiDeleteTask(task.id);
+            taskMessage.textContent = "Tarefa apagada com sucesso.";
+            taskMessage.classList.add("success");
+            await loadAndRenderTasks();
+          } catch (err) {
+            taskMessage.textContent = "Erro ao apagar tarefa: " + err.message;
+            taskMessage.classList.add("error");
+          }
+        });
+
+        actionsEl.appendChild(deleteBtn);
+        li.appendChild(actionsEl);
+        // -------- FIM NOVO --------
 
         taskList.appendChild(li);
       });
@@ -368,7 +408,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const dataInicial = taskDataInicialInput.value || null; // formato YYYY-MM-DD
     const dataLimite = taskDataLimiteInput.value || null;   // formato YYYY-MM-DD
     // const status = taskStatusSelect.value || "pendente";
-    const status = "Não Iniciado"
+    const status = "Não Iniciado";
 
     if (!title) {
       taskMessage.textContent = "O título da tarefa é obrigatório.";

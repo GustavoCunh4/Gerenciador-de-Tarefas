@@ -125,3 +125,14 @@ def create_task(task_in: TaskCreate, db: Session = Depends(get_db)):
         return task
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/tasks/{task_id}")
+def delete_task(task_id: int, db: Session = Depends(get_db)):
+    """
+    Remove uma tarefa pelo ID.
+    """
+    deleted = crud.delete_task(db, task_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
+    return {"detail": "Tarefa apagada com sucesso."}

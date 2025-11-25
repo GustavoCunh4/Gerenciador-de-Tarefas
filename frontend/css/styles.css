@@ -130,21 +130,6 @@ body {
   box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
 }
 
-/* ...deixe o resto igual... */
-
-/* Adicione perto de .task-description: */
-.task-meta {
-  margin-top: 4px;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-
-.form-group input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
-}
-
 /* Botões */
 
 .btn {
@@ -275,6 +260,39 @@ body {
   color: var(--muted);
 }
 
+.task-meta {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Ações da tarefa (apagar, etc.) */
+.task-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Botão de apagar tarefa */
+.btn.btn-delete {
+  background-color: transparent;
+  color: var(--danger);
+  border: 1px solid rgba(220, 38, 38, 0.15);
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn.btn-delete:hover {
+  background-color: rgba(220, 38, 38, 0.06);
+  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.25);
+  transform: translateY(-1px);
+}
+
+/* Estado vazio */
+
 .empty-state {
   margin-top: 12px;
   font-size: 0.9rem;
@@ -304,5 +322,15 @@ body {
   #logout-button {
     align-self: stretch;
     text-align: center;
+  }
+
+  .task-item-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .task-actions {
+    justify-content: flex-start;
   }
 }

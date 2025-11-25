@@ -74,3 +74,17 @@ def get_tasks_for_user(db: Session, user_id: int) -> List[Task]:
         .order_by(Task.created_at.desc())
         .all()
     )
+
+
+def delete_task(db: Session, task_id: int) -> bool:
+    """
+    Deleta uma tarefa pelo ID.
+    Retorna True se deletou, False se não encontrou.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        return False
+
+    db.delete(task)
+    db.commit()
+    return True

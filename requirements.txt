@@ -5,3 +5,4 @@ pydantic
 werkzeug
 psycopg[binary]
 python-dotenv
+redis

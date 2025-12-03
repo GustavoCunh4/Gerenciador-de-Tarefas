@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gerenciador de Tarefas</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <main class="app-container">
+    <header class="app-header">
+      <h1>Gerenciador de Tarefas</h1>
+      <p>Organize suas tarefas de forma simples e objetiva.</p>
+    </header>
+
+    <!-- Seção de autenticação -->
+    <section id="auth-section" class="card">
+      <div class="tab-header">
+        <button id="tab-login" class="tab-button active">Entrar</button>
+        <button id="tab-register" class="tab-button">Cadastrar</button>
+      </div>
+
+      <div class="tab-content">
+        <!-- Login -->
+        <form id="login-form" class="form active">
+          <h2>Entrar</h2>
+          <div class="form-group">
+            <label for="login-email">E-mail</label>
+            <input type="email" id="login-email" placeholder="seuemail@exemplo.com" required />
+          </div>
+          <div class="form-group">
+            <label for="login-password">Senha</label>
+            <input type="password" id="login-password" placeholder="Sua senha" required />
+          </div>
+          <button type="submit" class="btn primary">Entrar</button>
+          <p id="login-message" class="form-message"></p>
+        </form>
+
+        <!-- Cadastro -->
+        <form id="register-form" class="form">
+          <h2>Cadastrar</h2>
+          <div class="form-group">
+            <label for="register-email">E-mail</label>
+            <input type="email" id="register-email" placeholder="seuemail@exemplo.com" required />
+          </div>
+          <div class="form-group">
+            <label for="register-password">Senha</label>
+            <input type="password" id="register-password" placeholder="Mínimo 6 caracteres" required />
+          </div>
+          <button type="submit" class="btn secondary">Criar conta</button>
+          <p id="register-message" class="form-message"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Seção de tarefas -->
+    <section id="todo-section" class="card hidden">
+      <div class="todo-header">
+        <div>
+          <h2>Suas tarefas</h2>
+          <p class="user-email">Logado como: <span id="current-user-email"></span></p>
+        </div>
+        <button id="logout-button" class="btn ghost">Sair</button>
+      </div>
+
+      <!-- Formulário de nova tarefa -->
+      <form id="task-form" class="form inline-form">
+        <div class="form-group flex-1">
+          <label for="task-title">Nova tarefa</label>
+          <input type="text" id="task-title" placeholder="Digite o título da tarefa" required />
+        </div>
+
+        <div class="form-group flex-1">
+          <label for="task-description">Descrição (opcional)</label>
+          <input type="text" id="task-description" placeholder="Detalhes da tarefa" />
+        </div>
+
+        <div class="form-group">
+          <label for="task-data-inicial">Data inicial</label>
+          <input type="date" id="task-data-inicial" />
+        </div>
+
+        <div class="form-group">
+          <label for="task-data-limite">Data limite</label>
+          <input type="date" id="task-data-limite" />
+        </div>
+
+        <div class="form-group">
+          <label for="task-status">Status</label>
+          <select id="task-status">
+            <option value="pendente" selected>Pendente</option>
+            <option value="em_andamento">Em andamento</option>
+            <option value="concluida">Concluída</option>
+          </select>
+        </div>
+
+        <button type="submit" class="btn primary">Adicionar</button>
+      </form>
+
+      <p id="task-message" class="form-message"></p>
+
+      <!-- Lista de tarefas -->
+      <ul id="task-list" class="task-list">
+        <!-- Renderizado via JS -->
+      </ul>
+
+      <p id="empty-state" class="empty-state">
+        Você ainda não tem tarefas. Comece adicionando uma acima 👆
+      </p>
+    </section>
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

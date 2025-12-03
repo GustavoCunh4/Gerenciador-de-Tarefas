@@ -1,8 +1,10 @@
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,10 +14,12 @@ from sqlalchemy.orm import Session
 from backend.db import get_db
 import backend.crud as crud
 import backend.models  # garante que os models sejam carregados
+from backend.cache.redis_client import is_cache_available, redis_client
 
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
+CACHE_TTL_SECONDS = 60
 
 app = FastAPI(title="Todo List API")
 
@@ -106,7 +110,28 @@ def login_user(data: UserLogin, db: Session = Depends(get_db)):
 
 @app.get("/tasks", response_model=List[TaskBase])
 def list_tasks(user_id: int, db: Session = Depends(get_db)):
+    cache_key = f"tasks:user:{user_id}"
+
+    # Tenta servir a partir do cache
+    if redis_client:
+        try:
+            cached_tasks = redis_client.get(cache_key)
+            if cached_tasks:
+                return json.loads(cached_tasks)
+        except Exception:
+            # Se o Redis falhar, seguimos sem cache.
+            pass
+
     tasks = crud.get_tasks_for_user(db, user_id)
+
+    # Armazena no cache com TTL curto para evitar dados desatualizados
+    if redis_client:
+        try:
+            serialized = jsonable_encoder(tasks)
+            redis_client.setex(cache_key, CACHE_TTL_SECONDS, json.dumps(serialized))
+        except Exception:
+            pass
+
     return tasks
 
 
@@ -122,6 +147,17 @@ def create_task(task_in: TaskCreate, db: Session = Depends(get_db)):
             data_limite=task_in.data_limite,
             status=task_in.status,
         )
+        if redis_client:
+            try:
+                redis_client.delete(f"tasks:user:{task_in.user_id}")
+            except Exception:
+                pass
         return task
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/cache/ping")
+def cache_ping():
+    """Endpoint simples para verificar disponibilidade do Redis."""
+    return {"redis_available": is_cache_available()}

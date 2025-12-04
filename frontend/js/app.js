@@ -144,6 +144,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const taskList = document.getElementById("task-list");
   const emptyState = document.getElementById("empty-state");
   const taskSummary = document.getElementById("task-summary");
+  const speechButton = document.getElementById("speech-task-button");
   const listView = document.getElementById("list-view");
   const matrixView = document.getElementById("matrix-view");
   const viewToggleButtons = document.querySelectorAll(".view-toggle .btn");
@@ -154,6 +155,9 @@ document.addEventListener("DOMContentLoaded", () => {
     "not-important-urgent": document.getElementById("zone-not-important-urgent"),
     "not-important-not-urgent": document.getElementById("zone-not-important-not-urgent")
   };
+
+  let recognition = null;
+  let isListening = false;
 
   const statusFilterGroup = document.getElementById("status-filter-group");
   const taskCountPill = document.getElementById("task-count-pill");
@@ -168,6 +172,13 @@ document.addEventListener("DOMContentLoaded", () => {
       el.textContent = "";
       el.className = "form-message";
     });
+  }
+
+  function setTaskMessage(msg, type = "info") {
+    taskMessage.textContent = msg;
+    taskMessage.className = "form-message";
+    if (type === "error") taskMessage.classList.add("error");
+    if (type === "success") taskMessage.classList.add("success");
   }
 
   function showAuthSection() {
@@ -277,6 +288,78 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateDraft(field, value) {
     if (!state.editingDraft) return;
     state.editingDraft[field] = value;
+  }
+
+  // ----------------------
+  // Voz: helpers
+  // ----------------------
+  function normalizeDate(text) {
+    if (!text) return null;
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  function extractField(text, keywords) {
+    const lower = text.toLowerCase();
+    return keywords.some((kw) => lower.includes(kw));
+  }
+
+  function parseSpeech(text) {
+    const parts = text.split(/;|\\n/).map((p) => p.trim()).filter(Boolean);
+    const data = {
+      title: "",
+      description: "",
+      data_inicial: null,
+      data_limite: null,
+      status: null,
+    };
+
+    const statusMap = {
+      pendente: "pendente",
+      pendentes: "pendente",
+      "em andamento": "em_andamento",
+      andamento: "em_andamento",
+      concluida: "concluida",
+      concluido: "concluida",
+      concluida: "concluida",
+    };
+
+    const tryStatus = (chunk) => {
+      const lower = chunk.toLowerCase();
+      for (const key of Object.keys(statusMap)) {
+        if (lower.includes(key)) return statusMap[key];
+      }
+      return null;
+    };
+
+    parts.forEach((chunk) => {
+      const lower = chunk.toLowerCase();
+      if (extractField(chunk, ["titulo", "título", "nome"])) {
+        data.title = chunk.split(/titulo|título|nome/i).pop().trim() || data.title;
+      } else if (extractField(chunk, ["descricao", "descrição"])) {
+        data.description = chunk.split(/descricao|descrição/i).pop().trim() || data.description;
+      } else if (extractField(chunk, ["data inicial", "inicio", "início"])) {
+        const rest = chunk.split(/data inicial|inicio|início/i).pop().trim();
+        data.data_inicial = normalizeDate(rest);
+      } else if (extractField(chunk, ["data limite", "prazo", "deadline"])) {
+        const rest = chunk.split(/data limite|prazo|deadline/i).pop().trim();
+        data.data_limite = normalizeDate(rest);
+      } else if (extractField(chunk, ["status"])) {
+        const rest = chunk.split(/status/i).pop().trim();
+        data.status = tryStatus(rest) || data.status;
+      } else {
+        // fallback: se vier solto e não tiver titulo ainda, assuma que é titulo
+        if (!data.title) data.title = chunk;
+      }
+
+      if (!data.status) {
+        const guess = tryStatus(chunk);
+        if (guess) data.status = guess;
+      }
+    });
+
+    return data;
   }
 
   // ----------------------
@@ -609,6 +692,59 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // ----------------------
+  // Voz: setup
+  // ----------------------
+  if (speechButton) {
+    if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.lang = "pt-BR";
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+        isListening = true;
+        speechButton.classList.add("listening");
+        setTaskMessage("Ouvindo... fale: titulo; descricao; data inicial; data limite; status.");
+      };
+
+      recognition.onend = () => {
+        isListening = false;
+        speechButton.classList.remove("listening");
+      };
+
+      recognition.onerror = (event) => {
+        setTaskMessage("Nao foi possivel capturar audio: " + (event.error || "erro"), "error");
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        const parsed = parseSpeech(transcript);
+
+        if (parsed.title) taskTitleInput.value = parsed.title;
+        if (parsed.description) taskDescriptionInput.value = parsed.description;
+        if (parsed.data_inicial) taskDataInicialInput.value = parsed.data_inicial;
+        if (parsed.data_limite) taskDataLimiteInput.value = parsed.data_limite;
+        if (parsed.status) taskStatusSelect.value = parsed.status;
+
+        setTaskMessage("Preenchido via voz. Reveja e clique em Adicionar.", "success");
+      };
+
+      speechButton.addEventListener("click", () => {
+        if (isListening) {
+          recognition.stop();
+          return;
+        }
+        clearMessages();
+        recognition.start();
+      });
+    } else {
+      speechButton.disabled = true;
+      speechButton.title = "Captura de voz nao suportada neste navegador.";
+    }
+  }
+
   async function loadAndRenderTasks() {
     if (!state.currentUser) {
       state.tasks = [];
@@ -742,8 +878,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!state.currentUser) {
-      taskMessage.textContent = "Voce precisa estar logado para criar tarefas.";
-      taskMessage.classList.add("error");
+      setTaskMessage("Voce precisa estar logado para criar tarefas.", "error");
       return;
     }
 
@@ -763,13 +898,11 @@ document.addEventListener("DOMContentLoaded", () => {
       taskDataLimiteInput.value = "";
       taskStatusSelect.value = "pendente";
 
-      taskMessage.textContent = "Tarefa adicionada!";
-      taskMessage.classList.add("success");
+      setTaskMessage("Tarefa adicionada!", "success");
 
       await loadAndRenderTasks();
     } catch (err) {
-      taskMessage.textContent = err.message;
-      taskMessage.classList.add("error");
+      setTaskMessage(err.message, "error");
     }
   });
 

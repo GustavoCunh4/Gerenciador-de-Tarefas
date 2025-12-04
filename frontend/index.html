@@ -10,10 +10,10 @@
   <main class="app-container">
     <header class="app-header">
       <h1>Gerenciador de Tarefas</h1>
-      <p>Organize suas tarefas de forma simples e objetiva.</p>
+      <p>Organize suas atividades com clareza e rapidez.</p>
     </header>
 
-    <!-- Seção de autenticação -->
+    <!-- Secao de autenticacao -->
     <section id="auth-section" class="card">
       <div class="tab-header">
         <button id="tab-login" class="tab-button active">Entrar</button>
@@ -45,7 +45,7 @@
           </div>
           <div class="form-group">
             <label for="register-password">Senha</label>
-            <input type="password" id="register-password" placeholder="Mínimo 6 caracteres" required />
+            <input type="password" id="register-password" placeholder="Minimo 6 caracteres" required />
           </div>
           <button type="submit" class="btn secondary">Criar conta</button>
           <p id="register-message" class="form-message"></p>
@@ -53,25 +53,57 @@
       </div>
     </section>
 
-    <!-- Seção de tarefas -->
+    <!-- Secao de tarefas -->
     <section id="todo-section" class="card hidden">
       <div class="todo-header">
         <div>
           <h2>Suas tarefas</h2>
           <p class="user-email">Logado como: <span id="current-user-email"></span></p>
         </div>
-        <button id="logout-button" class="btn ghost">Sair</button>
+        <div class="header-actions">
+          <div class="view-toggle">
+            <button type="button" class="btn ghost small active" data-view="list">Lista</button>
+            <button type="button" class="btn ghost small" data-view="matrix">Matriz</button>
+          </div>
+          <button id="logout-button" class="btn ghost">Sair</button>
+        </div>
       </div>
 
-      <!-- Formulário de nova tarefa -->
+      <div class="toolbar">
+        <div>
+          <p class="eyebrow">Filtro rapido</p>
+          <div id="status-filter-group" class="chip-group">
+            <button type="button" class="chip active" data-status="all">Todas</button>
+            <button type="button" class="chip" data-status="pendente">Pendentes</button>
+            <button type="button" class="chip" data-status="em_andamento">Em andamento</button>
+            <button type="button" class="chip" data-status="concluida">Concluida</button>
+          </div>
+        </div>
+        <div class="toolbar-actions">
+          <span id="task-count-pill" class="pill">0 tarefas</span>
+          <button id="reload-tasks" type="button" class="btn ghost small">Atualizar</button>
+        </div>
+      </div>
+
+      <div class="status-legend">
+        <span><span class="dot dot-pendente"></span>Pendente</span>
+        <span><span class="dot dot-andamento"></span>Em andamento</span>
+        <span><span class="dot dot-concluida"></span>Concluida</span>
+      </div>
+
+      <div class="view-note">
+        <p>Use a Matriz de Prioridade para enxergar urgente x importante. Regras: Urgente = prazo em 2 dias ou vencido; Importante = em andamento ou prazo ate 7 dias. Concluidas vao para nao importante / nao urgente.</p>
+      </div>
+
+      <!-- Formulario de nova tarefa -->
       <form id="task-form" class="form inline-form">
         <div class="form-group flex-1">
           <label for="task-title">Nova tarefa</label>
-          <input type="text" id="task-title" placeholder="Digite o título da tarefa" required />
+          <input type="text" id="task-title" placeholder="Digite o titulo da tarefa" required />
         </div>
 
         <div class="form-group flex-1">
-          <label for="task-description">Descrição (opcional)</label>
+          <label for="task-description">Descricao (opcional)</label>
           <input type="text" id="task-description" placeholder="Detalhes da tarefa" />
         </div>
 
@@ -90,7 +122,7 @@
           <select id="task-status">
             <option value="pendente" selected>Pendente</option>
             <option value="em_andamento">Em andamento</option>
-            <option value="concluida">Concluída</option>
+            <option value="concluida">Concluida</option>
           </select>
         </div>
 
@@ -98,15 +130,61 @@
       </form>
 
       <p id="task-message" class="form-message"></p>
+      <p id="task-summary" class="task-summary"></p>
 
-      <!-- Lista de tarefas -->
-      <ul id="task-list" class="task-list">
-        <!-- Renderizado via JS -->
-      </ul>
+      <div id="list-view">
+        <ul id="task-list" class="task-list">
+          <!-- Renderizado via JS -->
+        </ul>
+        <p id="empty-state" class="empty-state">
+          Nenhuma tarefa encontrada para este filtro. Crie uma nova ou altere o filtro acima.
+        </p>
+      </div>
 
-      <p id="empty-state" class="empty-state">
-        Você ainda não tem tarefas. Comece adicionando uma acima 👆
-      </p>
+      <div id="matrix-view" class="hidden">
+        <div class="matrix-wrapper">
+          <div class="axis axis-y">Importancia</div>
+          <div class="axis axis-x">Urgencia</div>
+          <div class="matrix-grid matrix-2x2">
+            <div class="matrix-card" data-zone="important-urgent">
+              <div class="matrix-card-header">
+                <div>
+                  <h3>Importante e Urgente</h3>
+                </div>
+                <span class="badge badge-fire">🔥</span>
+              </div>
+              <div class="matrix-content" id="zone-important-urgent"></div>
+            </div>
+            <div class="matrix-card" data-zone="important-not-urgent">
+              <div class="matrix-card-header">
+                <div>
+                  <h3>Importante e Nao urgente</h3>
+                </div>
+                <span class="badge badge-important">🌟</span>
+              </div>
+              <div class="matrix-content" id="zone-important-not-urgent"></div>
+            </div>
+            <div class="matrix-card" data-zone="not-important-urgent">
+              <div class="matrix-card-header">
+                <div>
+                  <h3>Nao importante e Urgente</h3>
+                </div>
+                <span class="badge badge-urgent">⚡</span>
+              </div>
+              <div class="matrix-content" id="zone-not-important-urgent"></div>
+            </div>
+            <div class="matrix-card" data-zone="not-important-not-urgent">
+              <div class="matrix-card-header">
+                <div>
+                  <h3>Nao importante e Nao urgente</h3>
+                </div>
+                <span class="badge badge-later">🧭</span>
+              </div>
+              <div class="matrix-content" id="zone-not-important-not-urgent"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 

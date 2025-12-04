@@ -1,26 +1,37 @@
 // js/app.js
 
 // ----------------------
-// Configuração da API
+// Configuracao da API
 // ----------------------
 const API_URL =
   window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
     ? "http://127.0.0.1:8000"
     : "";
 
-// ----------------------
-// Estado da aplicação
-// ----------------------
-const state = {
-  currentUser: null, // { id, email }
-  tasks: []          // array de tarefas vindas da API
+const STATUS_LABELS = {
+  pendente: "Pendente",
+  em_andamento: "Em andamento",
+  concluida: "Concluida"
 };
 
 // ----------------------
-// Camada de dados: chamadas à API
+// Estado da aplicacao
+// ----------------------
+const state = {
+  currentUser: null, // { id, email }
+  tasks: [], // array de tarefas vindas da API
+  filter: {
+    status: "all"
+  },
+  viewMode: "list",
+  editingTaskId: null,
+  editingDraft: null
+};
+
+// ----------------------
+// Camada de dados: chamadas a API
 // ----------------------
 
-// Helper genérico para tratar respostas
 async function handleResponse(response) {
   let data = {};
   try {
@@ -30,49 +41,42 @@ async function handleResponse(response) {
   }
 
   if (!response.ok) {
-    const msg = data.detail || "Erro na requisição.";
+    const msg = data.detail || "Erro na requisicao.";
     throw new Error(msg);
   }
 
   return data;
 }
 
-// Cadastro de usuário (POST /register)
 async function apiRegisterUser(email, password) {
   const response = await fetch(`${API_URL}/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password })
   });
-  return handleResponse(response); // { id, email }
+  return handleResponse(response);
 }
 
-// Login (POST /login)
 async function apiLoginUser(email, password) {
   const response = await fetch(`${API_URL}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password })
   });
-  return handleResponse(response); // { id, email }
+  return handleResponse(response);
 }
 
-// Listar tarefas (GET /tasks?user_id=...)
-async function apiGetTasks(userId) {
-  const response = await fetch(`${API_URL}/tasks?user_id=${userId}`);
-  return handleResponse(response); // array de tarefas
+async function apiGetTasks(userId, filters = {}) {
+  const params = new URLSearchParams({ user_id: userId });
+  if (filters.status && filters.status !== "all") {
+    params.append("status", filters.status);
+  }
+
+  const response = await fetch(`${API_URL}/tasks?${params.toString()}`);
+  return handleResponse(response);
 }
 
-// Criar tarefa (POST /tasks)
-// Agora enviando data_inicial, data_limite e status também
-async function apiCreateTask(
-  userId,
-  title,
-  description,
-  dataInicial,
-  dataLimite,
-  status
-) {
+async function apiCreateTask(userId, title, description, dataInicial, dataLimite, status) {
   const payload = {
     user_id: userId,
     title,
@@ -88,19 +92,27 @@ async function apiCreateTask(
     body: JSON.stringify(payload)
   });
 
-  return handleResponse(response); // tarefa criada
+  return handleResponse(response);
 }
 
-// ---- NOVO: deletar tarefa (DELETE /tasks/{task_id}) ----
+async function apiUpdateTask(taskId, payload) {
+  const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return handleResponse(response);
+}
+
 async function apiDeleteTask(taskId) {
   const response = await fetch(`${API_URL}/tasks/${taskId}`, {
     method: "DELETE"
   });
-  return handleResponse(response); // pode vir vazio ou algum json
+  return handleResponse(response);
 }
 
 // ----------------------
-// Inicialização da UI
+// Inicializacao da UI
 // ----------------------
 document.addEventListener("DOMContentLoaded", () => {
   // Elementos principais
@@ -118,7 +130,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const registerMessage = document.getElementById("register-message");
   const taskMessage = document.getElementById("task-message");
 
-  // Seção TODO
+  // Secao TODO
   const currentUserEmailEl = document.getElementById("current-user-email");
   const logoutButton = document.getElementById("logout-button");
 
@@ -131,6 +143,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const taskList = document.getElementById("task-list");
   const emptyState = document.getElementById("empty-state");
+  const taskSummary = document.getElementById("task-summary");
+  const listView = document.getElementById("list-view");
+  const matrixView = document.getElementById("matrix-view");
+  const viewToggleButtons = document.querySelectorAll(".view-toggle .btn");
+
+  const matrixZones = {
+    "important-urgent": document.getElementById("zone-important-urgent"),
+    "important-not-urgent": document.getElementById("zone-important-not-urgent"),
+    "not-important-urgent": document.getElementById("zone-not-important-urgent"),
+    "not-important-not-urgent": document.getElementById("zone-not-important-not-urgent")
+  };
+
+  const statusFilterGroup = document.getElementById("status-filter-group");
+  const taskCountPill = document.getElementById("task-count-pill");
+  const reloadButton = document.getElementById("reload-tasks");
 
   // ----------------------
   // Helpers de UI
@@ -190,20 +217,70 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function formatStatus(status) {
     if (!status) return "";
-    switch (status) {
-      case "pendente":
-        return "Pendente";
-      case "em_andamento":
-        return "Em andamento";
-      case "concluida":
-        return "Concluída";
-      default:
-        return status;
+    const normalized = status.toLowerCase();
+    return STATUS_LABELS[normalized] || normalized;
+  }
+
+  function setStatusFilter(value) {
+    state.filter.status = value;
+    [...statusFilterGroup.querySelectorAll(".chip")].forEach((chip) => {
+      const chipStatus = chip.getAttribute("data-status");
+      chip.classList.toggle("active", chipStatus === value);
+    });
+    loadAndRenderTasks();
+  }
+
+  function updateTaskSummary(tasks) {
+    const total = tasks.length;
+    const suffix = total === 1 ? "tarefa" : "tarefas";
+    const filterLabel =
+      state.filter.status === "all" ? "todas" : `status ${formatStatus(state.filter.status)}`;
+
+    taskCountPill.textContent = `${total} ${suffix}`;
+    taskSummary.textContent = total
+      ? `Mostrando ${total} ${suffix} com ${filterLabel}.`
+      : `Nenhuma tarefa encontrada para ${filterLabel}.`;
+  }
+
+  function resetEditingState() {
+    state.editingTaskId = null;
+    state.editingDraft = null;
+  }
+
+  function setViewMode(mode) {
+    state.viewMode = mode;
+    if (mode === "list") {
+      listView.classList.remove("hidden");
+      matrixView.classList.add("hidden");
+    } else {
+      matrixView.classList.remove("hidden");
+      listView.classList.add("hidden");
     }
+
+    viewToggleButtons.forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.view === mode);
+    });
+  }
+
+  function startEditTask(task) {
+    state.editingTaskId = task.id;
+    state.editingDraft = {
+      title: task.title,
+      description: task.description || "",
+      data_inicial: task.data_inicial ? task.data_inicial.slice(0, 10) : "",
+      data_limite: task.data_limite ? task.data_limite.slice(0, 10) : "",
+      status: task.status || "pendente"
+    };
+    renderTasks();
+  }
+
+  function updateDraft(field, value) {
+    if (!state.editingDraft) return;
+    state.editingDraft[field] = value;
   }
 
   // ----------------------
-  // Renderização de tarefas
+  // Renderizacao de tarefas
   // ----------------------
   function renderTasks() {
     const tasks = state.tasks || [];
@@ -211,10 +288,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!tasks.length) {
       emptyState.style.display = "block";
+      updateTaskSummary(tasks);
+      renderMatrix(tasks);
       return;
     }
 
     emptyState.style.display = "none";
+    updateTaskSummary(tasks);
+    renderMatrix(tasks);
 
     tasks
       .slice()
@@ -223,13 +304,22 @@ document.addEventListener("DOMContentLoaded", () => {
         const li = document.createElement("li");
         li.className = "task-item";
 
-        // Header: título + data
         const header = document.createElement("div");
         header.className = "task-item-header";
 
         const titleEl = document.createElement("span");
         titleEl.className = "task-title";
         titleEl.textContent = task.title;
+
+        const statusBadge = document.createElement("span");
+        const badgeClass = `status-${task.status || "pendente"}`;
+        statusBadge.className = `status-badge ${badgeClass}`;
+        statusBadge.innerHTML = `<span></span>${formatStatus(task.status)}`;
+
+        const rightHeader = document.createElement("div");
+        rightHeader.style.display = "flex";
+        rightHeader.style.alignItems = "center";
+        rightHeader.style.gap = "10px";
 
         const dateEl = document.createElement("span");
         dateEl.className = "task-date";
@@ -242,11 +332,13 @@ document.addEventListener("DOMContentLoaded", () => {
           minute: "2-digit"
         });
 
+        rightHeader.appendChild(statusBadge);
+        rightHeader.appendChild(dateEl);
+
         header.appendChild(titleEl);
-        header.appendChild(dateEl);
+        header.appendChild(rightHeader);
         li.appendChild(header);
 
-        // Descrição
         if (task.description) {
           const descEl = document.createElement("p");
           descEl.className = "task-description";
@@ -254,17 +346,13 @@ document.addEventListener("DOMContentLoaded", () => {
           li.appendChild(descEl);
         }
 
-        // Meta: datas + status
         const metaParts = [];
 
         if (task.data_inicial) {
-          metaParts.push(`Início: ${formatDate(task.data_inicial)}`);
+          metaParts.push(`Inicio: ${formatDate(task.data_inicial)}`);
         }
         if (task.data_limite) {
           metaParts.push(`Limite: ${formatDate(task.data_limite)}`);
-        }
-        if (task.status) {
-          metaParts.push(`Status: ${formatStatus(task.status)}`);
         }
 
         if (metaParts.length) {
@@ -274,13 +362,21 @@ document.addEventListener("DOMContentLoaded", () => {
           li.appendChild(metaEl);
         }
 
-        // -------- NOVO: botão de apagar --------
         const actionsEl = document.createElement("div");
         actionsEl.className = "task-actions";
 
+        const editBtn = document.createElement("button");
+        editBtn.className = "btn btn-edit";
+        editBtn.textContent = "Editar";
+        editBtn.title = "Editar tarefa";
+        editBtn.addEventListener("click", () => {
+          clearMessages();
+          startEditTask(task);
+        });
+
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "btn btn-delete";
-        deleteBtn.textContent = "🗑";
+        deleteBtn.textContent = "Apagar";
         deleteBtn.title = "Apagar tarefa";
 
         deleteBtn.addEventListener("click", async () => {
@@ -300,12 +396,217 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         });
 
+        actionsEl.appendChild(editBtn);
         actionsEl.appendChild(deleteBtn);
         li.appendChild(actionsEl);
-        // -------- FIM NOVO --------
+
+        const isEditing = state.editingTaskId === task.id;
+        if (isEditing && state.editingDraft) {
+          const draft = state.editingDraft;
+          const editPanel = document.createElement("div");
+          editPanel.className = "edit-panel";
+
+          // Titulo
+          const titleGroup = document.createElement("div");
+          titleGroup.className = "form-group";
+          const titleLabel = document.createElement("label");
+          titleLabel.textContent = "Titulo";
+          const titleInput = document.createElement("input");
+          titleInput.type = "text";
+          titleInput.value = draft.title;
+          titleInput.addEventListener("input", (e) => updateDraft("title", e.target.value));
+          titleGroup.appendChild(titleLabel);
+          titleGroup.appendChild(titleInput);
+          editPanel.appendChild(titleGroup);
+
+          // Status
+          const statusGroup = document.createElement("div");
+          statusGroup.className = "form-group";
+          const statusLabel = document.createElement("label");
+          statusLabel.textContent = "Status";
+          const statusSelect = document.createElement("select");
+          ["pendente", "em_andamento", "concluida"].forEach((value) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = formatStatus(value);
+            if (draft.status === value) option.selected = true;
+            statusSelect.appendChild(option);
+          });
+          statusSelect.addEventListener("change", (e) => updateDraft("status", e.target.value));
+          statusGroup.appendChild(statusLabel);
+          statusGroup.appendChild(statusSelect);
+          editPanel.appendChild(statusGroup);
+
+          // Datas
+          const startGroup = document.createElement("div");
+          startGroup.className = "form-group";
+          const startLabel = document.createElement("label");
+          startLabel.textContent = "Data inicial";
+          const startInput = document.createElement("input");
+          startInput.type = "date";
+          startInput.value = draft.data_inicial || "";
+          startInput.addEventListener("change", (e) => updateDraft("data_inicial", e.target.value));
+          startGroup.appendChild(startLabel);
+          startGroup.appendChild(startInput);
+          editPanel.appendChild(startGroup);
+
+          const endGroup = document.createElement("div");
+          endGroup.className = "form-group";
+          const endLabel = document.createElement("label");
+          endLabel.textContent = "Data limite";
+          const endInput = document.createElement("input");
+          endInput.type = "date";
+          endInput.value = draft.data_limite || "";
+          endInput.addEventListener("change", (e) => updateDraft("data_limite", e.target.value));
+          endGroup.appendChild(endLabel);
+          endGroup.appendChild(endInput);
+          editPanel.appendChild(endGroup);
+
+          // Descricao
+          const descGroup = document.createElement("div");
+          descGroup.className = "form-group full-row";
+          const descLabel = document.createElement("label");
+          descLabel.textContent = "Descricao";
+          const descInput = document.createElement("textarea");
+          descInput.value = draft.description || "";
+          descInput.placeholder = "Atualize detalhes da tarefa";
+          descInput.addEventListener("input", (e) => updateDraft("description", e.target.value));
+          descGroup.appendChild(descLabel);
+          descGroup.appendChild(descInput);
+          editPanel.appendChild(descGroup);
+
+          // Acoes
+          const editActions = document.createElement("div");
+          editActions.className = "edit-actions";
+
+          const cancelEditBtn = document.createElement("button");
+          cancelEditBtn.type = "button";
+          cancelEditBtn.className = "btn ghost small";
+          cancelEditBtn.textContent = "Cancelar";
+          cancelEditBtn.addEventListener("click", () => {
+            resetEditingState();
+            renderTasks();
+          });
+
+          const saveEditBtn = document.createElement("button");
+          saveEditBtn.type = "button";
+          saveEditBtn.className = "btn primary small";
+          saveEditBtn.textContent = "Salvar";
+          saveEditBtn.addEventListener("click", async () => {
+            clearMessages();
+
+            if (!draft.title || !draft.title.trim()) {
+              taskMessage.textContent = "O titulo da tarefa e obrigatorio.";
+              taskMessage.classList.add("error");
+              return;
+            }
+
+            try {
+              await apiUpdateTask(task.id, {
+                user_id: state.currentUser.id,
+                title: draft.title.trim(),
+                description: draft.description,
+                data_inicial: draft.data_inicial || null,
+                data_limite: draft.data_limite || null,
+                status: draft.status
+              });
+              taskMessage.textContent = "Tarefa atualizada com sucesso.";
+              taskMessage.classList.add("success");
+              resetEditingState();
+              await loadAndRenderTasks();
+            } catch (err) {
+              taskMessage.textContent = "Erro ao atualizar tarefa: " + err.message;
+              taskMessage.classList.add("error");
+            }
+          });
+
+          editActions.appendChild(cancelEditBtn);
+          editActions.appendChild(saveEditBtn);
+          editPanel.appendChild(editActions);
+
+          li.appendChild(editPanel);
+        }
 
         taskList.appendChild(li);
       });
+  }
+
+  function classifyTasksForMatrix(tasks) {
+    const zones = {
+      "important-urgent": [],
+      "important-not-urgent": [],
+      "not-important-urgent": [],
+      "not-important-not-urgent": []
+    };
+
+    const now = new Date();
+    tasks.forEach((task) => {
+      let daysDiff = null;
+      if (task.data_limite) {
+        const limit = new Date(task.data_limite);
+        daysDiff = Math.ceil((limit - now) / (1000 * 60 * 60 * 24));
+      }
+
+      const isUrgent = daysDiff !== null && daysDiff <= 2;
+      const isImportant =
+        task.status === "em_andamento" ||
+        (daysDiff !== null && daysDiff <= 7);
+
+      let zoneKey = "not-important-not-urgent";
+
+      if (task.status === "concluida") {
+        zoneKey = "not-important-not-urgent";
+      } else if (isImportant && isUrgent) {
+        zoneKey = "important-urgent";
+      } else if (isImportant && !isUrgent) {
+        zoneKey = "important-not-urgent";
+      } else if (!isImportant && isUrgent) {
+        zoneKey = "not-important-urgent";
+      }
+
+      zones[zoneKey].push(task);
+    });
+
+    return zones;
+  }
+
+  function renderMatrix(tasks) {
+    const zones = classifyTasksForMatrix(tasks);
+
+    Object.entries(matrixZones).forEach(([zoneKey, container]) => {
+      container.innerHTML = "";
+      const zoneTasks = zones[zoneKey] || [];
+      if (!zoneTasks.length) {
+        const empty = document.createElement("p");
+        empty.className = "matrix-empty";
+        empty.textContent = "Sem tarefas aqui.";
+        container.appendChild(empty);
+        return;
+      }
+
+      zoneTasks
+        .slice()
+        .sort((a, b) => new Date(a.data_limite || a.created_at) - new Date(b.data_limite || b.created_at))
+        .forEach((task) => {
+          const item = document.createElement("div");
+          item.className = "matrix-item";
+
+          const title = document.createElement("div");
+          title.className = "title";
+          title.textContent = task.title;
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          const parts = [];
+          if (task.data_limite) parts.push(`Limite: ${formatDate(task.data_limite)}`);
+          parts.push(formatStatus(task.status));
+          meta.textContent = parts.join(" • ");
+
+          item.appendChild(title);
+          item.appendChild(meta);
+          container.appendChild(item);
+        });
+    });
   }
 
   async function loadAndRenderTasks() {
@@ -316,7 +617,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const tasks = await apiGetTasks(state.currentUser.id);
+      const tasks = await apiGetTasks(state.currentUser.id, {
+        status: state.filter.status
+      });
       state.tasks = tasks;
       renderTasks();
     } catch (err) {
@@ -337,7 +640,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // ----------------------
-  // Eventos de autenticação
+  // Eventos de autenticacao
   // ----------------------
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -354,7 +657,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       const user = await apiLoginUser(email, password);
-      state.currentUser = user; // { id, email }
+      state.currentUser = user;
       showTodoSection();
     } catch (err) {
       loginMessage.textContent = err.message;
@@ -377,7 +680,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       await apiRegisterUser(email, password);
-      registerMessage.textContent = "Cadastro realizado com sucesso! Você já pode entrar.";
+      registerMessage.textContent = "Cadastro realizado! Voce ja pode entrar.";
       registerMessage.classList.add("success");
 
       setTimeout(() => {
@@ -392,12 +695,35 @@ document.addEventListener("DOMContentLoaded", () => {
   logoutButton.addEventListener("click", () => {
     state.currentUser = null;
     state.tasks = [];
+    resetEditingState();
     showAuthSection();
     switchToLogin();
   });
 
   // ----------------------
-  // Evento de criação de tarefa
+  // Eventos de filtro
+  // ----------------------
+  statusFilterGroup.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-status]");
+    if (!chip) return;
+    const status = chip.getAttribute("data-status");
+    setStatusFilter(status);
+  });
+
+  viewToggleButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const view = btn.dataset.view;
+      setViewMode(view);
+    });
+  });
+
+  reloadButton.addEventListener("click", () => {
+    clearMessages();
+    loadAndRenderTasks();
+  });
+
+  // ----------------------
+  // Evento de criacao de tarefa
   // ----------------------
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -405,19 +731,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const title = taskTitleInput.value.trim();
     const description = taskDescriptionInput.value.trim();
-    const dataInicial = taskDataInicialInput.value || null; // formato YYYY-MM-DD
-    const dataLimite = taskDataLimiteInput.value || null;   // formato YYYY-MM-DD
-    // const status = taskStatusSelect.value || "pendente";
-    const status = "Não Iniciado";
+    const dataInicial = taskDataInicialInput.value || null;
+    const dataLimite = taskDataLimiteInput.value || null;
+    const status = taskStatusSelect.value || "pendente";
 
     if (!title) {
-      taskMessage.textContent = "O título da tarefa é obrigatório.";
+      taskMessage.textContent = "O titulo da tarefa e obrigatorio.";
       taskMessage.classList.add("error");
       return;
     }
 
     if (!state.currentUser) {
-      taskMessage.textContent = "Você precisa estar logado para criar tarefas.";
+      taskMessage.textContent = "Voce precisa estar logado para criar tarefas.";
       taskMessage.classList.add("error");
       return;
     }
@@ -432,7 +757,6 @@ document.addEventListener("DOMContentLoaded", () => {
         status
       );
 
-      // Limpar campos
       taskTitleInput.value = "";
       taskDescriptionInput.value = "";
       taskDataInicialInput.value = "";
@@ -452,4 +776,5 @@ document.addEventListener("DOMContentLoaded", () => {
   // Estado inicial: tela de login
   showAuthSection();
   switchToLogin();
+  setViewMode("list");
 });

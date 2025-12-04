@@ -715,7 +715,18 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       recognition.onerror = (event) => {
-        setTaskMessage("Nao foi possivel capturar audio: " + (event.error || "erro"), "error");
+        isListening = false;
+        speechButton.classList.remove("listening");
+        const code = event.error || "erro";
+        const hints = {
+          network: "Verifique sua internet ou teste em https/localhost no Chrome.",
+          "not-allowed": "Permita o microfone para usar voz.",
+          "service-not-allowed": "Permita o microfone para usar voz.",
+          "audio-capture": "Nenhum microfone detectado.",
+          "no-speech": "Nenhuma fala detectada, tente novamente."
+        };
+        const hint = hints[code] ? " " + hints[code] : "";
+        setTaskMessage("Nao foi possivel capturar audio: " + code + "." + hint, "error");
       };
 
       recognition.onresult = (event) => {

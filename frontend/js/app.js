@@ -158,6 +158,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let recognition = null;
   let isListening = false;
+  let speechBuffer = "";
 
   const statusFilterGroup = document.getElementById("status-filter-group");
   const taskCountPill = document.getElementById("task-count-pill");
@@ -179,6 +180,14 @@ document.addEventListener("DOMContentLoaded", () => {
     taskMessage.className = "form-message";
     if (type === "error") taskMessage.classList.add("error");
     if (type === "success") taskMessage.classList.add("success");
+  }
+
+  function applyParsedToInputs(parsed) {
+    if (parsed.title) taskTitleInput.value = parsed.title;
+    if (parsed.description) taskDescriptionInput.value = parsed.description;
+    if (parsed.data_inicial) taskDataInicialInput.value = parsed.data_inicial;
+    if (parsed.data_limite) taskDataLimiteInput.value = parsed.data_limite;
+    if (parsed.status) taskStatusSelect.value = parsed.status;
   }
 
   function showAuthSection() {
@@ -306,13 +315,16 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function parseSpeech(text) {
-    const parts = text.split(/;|\\n/).map((p) => p.trim()).filter(Boolean);
+    // Normaliza separadores para facilitar parsing
+    const normalized = text.replace(/[,]/g, ";");
+    const parts = normalized.split(/;|\n/).map((p) => p.trim()).filter(Boolean);
+
     const data = {
       title: "",
       description: "",
       data_inicial: null,
       data_limite: null,
-      status: null,
+      status: null
     };
 
     const statusMap = {
@@ -322,7 +334,15 @@ document.addEventListener("DOMContentLoaded", () => {
       andamento: "em_andamento",
       concluida: "concluida",
       concluido: "concluida",
-      concluida: "concluida",
+      concluidas: "concluida"
+    };
+
+    const matchSegment = (regexes) => {
+      for (const rx of regexes) {
+        const m = normalized.match(rx);
+        if (m && m[2]) return m[2].trim();
+      }
+      return "";
     };
 
     const tryStatus = (chunk) => {
@@ -333,25 +353,22 @@ document.addEventListener("DOMContentLoaded", () => {
       return null;
     };
 
-    parts.forEach((chunk) => {
-      const lower = chunk.toLowerCase();
-      if (extractField(chunk, ["titulo", "título", "nome"])) {
-        data.title = chunk.split(/titulo|título|nome/i).pop().trim() || data.title;
-      } else if (extractField(chunk, ["descricao", "descrição"])) {
-        data.description = chunk.split(/descricao|descrição/i).pop().trim() || data.description;
-      } else if (extractField(chunk, ["data inicial", "inicio", "início"])) {
-        const rest = chunk.split(/data inicial|inicio|início/i).pop().trim();
-        data.data_inicial = normalizeDate(rest);
-      } else if (extractField(chunk, ["data limite", "prazo", "deadline"])) {
-        const rest = chunk.split(/data limite|prazo|deadline/i).pop().trim();
-        data.data_limite = normalizeDate(rest);
-      } else if (extractField(chunk, ["status"])) {
-        const rest = chunk.split(/status/i).pop().trim();
-        data.status = tryStatus(rest) || data.status;
-      } else {
-        // fallback: se vier solto e não tiver titulo ainda, assuma que é titulo
-        if (!data.title) data.title = chunk;
-      }
+    data.title = matchSegment([/(titulo|t[ií]tulo|nome)\s*[:\-]?\s*([^\n;]+)/i]) || data.title;
+    data.description = matchSegment([/(descricao|descri[cç]ao)\s*[:\-]?\s*([^\n;]+)/i]) || data.description;
+
+    const di = matchSegment([/(data inicial|inicio|in[ií]cio)\s*[:\-]?\s*([^\n;]+)/i]);
+    if (di) data.data_inicial = normalizeDate(di);
+
+    const dl = matchSegment([/(data limite|prazo|deadline)\s*[:\-]?\s*([^\n;]+)/i]);
+    if (dl) data.data_limite = normalizeDate(dl);
+
+    const st = matchSegment([/(status)\s*[:\-]?\s*([^\n;]+)/i]);
+    if (st) data.status = tryStatus(st) || data.status;
+
+    // Fallback: usa blocos em ordem para complementar o que faltar
+    parts.forEach((chunk, index) => {
+      if (!data.title && index === 0) data.title = chunk;
+      else if (!data.description) data.description = chunk;
 
       if (!data.status) {
         const guess = tryStatus(chunk);
@@ -361,7 +378,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     return data;
   }
-
   // ----------------------
   // Renderizacao de tarefas
   // ----------------------
@@ -700,23 +716,79 @@ document.addEventListener("DOMContentLoaded", () => {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognition = new SpeechRecognition();
       recognition.lang = "pt-BR";
-      recognition.continuous = false;
+      recognition.continuous = true;
       recognition.interimResults = false;
+      let shouldParseOnEnd = false;
+
+      const resetMic = () => {
+        isListening = false;
+        speechButton.classList.remove("listening");
+      };
+
+      const parseBuffer = () => {
+        const transcript = (speechBuffer || "").trim();
+        if (!transcript) {
+          setTaskMessage("Nenhum audio capturado. Tente novamente.", "error");
+          return;
+        }
+        const parsed = parseSpeech(transcript);
+        applyParsedToInputs(parsed);
+
+        // Se tiver usuario logado e titulo, cria direto.
+        const title = taskTitleInput.value.trim() || parsed.title;
+        if (!title) {
+          setTaskMessage("Titulo nao identificado. Fale novamente: 'titulo ...; descricao ...; datas; status'.", "error");
+          return;
+        }
+        if (!state.currentUser) {
+          setTaskMessage("Voce precisa estar logado para criar tarefas.", "error");
+          return;
+        }
+
+        const description = taskDescriptionInput.value.trim() || parsed.description || "";
+        const dataInicial = taskDataInicialInput.value || parsed.data_inicial || null;
+        const dataLimite = taskDataLimiteInput.value || parsed.data_limite || null;
+        const status = taskStatusSelect.value || parsed.status || "pendente";
+
+        apiCreateTask(
+          state.currentUser.id,
+          title,
+          description,
+          dataInicial,
+          dataLimite,
+          status
+        )
+          .then(async () => {
+            taskTitleInput.value = "";
+            taskDescriptionInput.value = "";
+            taskDataInicialInput.value = "";
+            taskDataLimiteInput.value = "";
+            taskStatusSelect.value = "pendente";
+            setTaskMessage("Tarefa criada via voz!", "success");
+            await loadAndRenderTasks();
+          })
+          .catch((err) => {
+            setTaskMessage("Erro ao criar tarefa: " + err.message, "error");
+          });
+      };
 
       recognition.onstart = () => {
         isListening = true;
+        shouldParseOnEnd = true;
+        speechBuffer = "";
         speechButton.classList.add("listening");
         setTaskMessage("Ouvindo... fale: titulo; descricao; data inicial; data limite; status.");
       };
 
       recognition.onend = () => {
-        isListening = false;
-        speechButton.classList.remove("listening");
+        resetMic();
+        if (shouldParseOnEnd) {
+          parseBuffer();
+        }
       };
 
       recognition.onerror = (event) => {
-        isListening = false;
-        speechButton.classList.remove("listening");
+        resetMic();
         const code = event.error || "erro";
         const hints = {
           network: "Verifique sua internet ou teste em https/localhost no Chrome.",
@@ -730,25 +802,22 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        const parsed = parseSpeech(transcript);
-
-        if (parsed.title) taskTitleInput.value = parsed.title;
-        if (parsed.description) taskDescriptionInput.value = parsed.description;
-        if (parsed.data_inicial) taskDataInicialInput.value = parsed.data_inicial;
-        if (parsed.data_limite) taskDataLimiteInput.value = parsed.data_limite;
-        if (parsed.status) taskStatusSelect.value = parsed.status;
-
-        setTaskMessage("Preenchido via voz. Reveja e clique em Adicionar.", "success");
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            speechBuffer += " " + result[0].transcript;
+          }
+        }
       };
 
       speechButton.addEventListener("click", () => {
-        if (isListening) {
-          recognition.stop();
-          return;
-        }
         clearMessages();
-        recognition.start();
+        if (isListening) {
+          shouldParseOnEnd = true;
+          recognition.stop();
+        } else {
+          recognition.start();
+        }
       });
     } else {
       speechButton.disabled = true;

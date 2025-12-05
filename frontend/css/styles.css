@@ -392,6 +392,21 @@ body {
   gap: 8px;
 }
 
+.sort-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sort-control select {
+  min-width: 180px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  background: #f8fafc;
+  color: var(--text);
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: var(--muted);

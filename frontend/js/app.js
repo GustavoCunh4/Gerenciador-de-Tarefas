@@ -24,6 +24,7 @@ const state = {
     status: "all"
   },
   viewMode: "list",
+  sort: "recent",
   editingTaskId: null,
   editingDraft: null
 };
@@ -148,6 +149,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const listView = document.getElementById("list-view");
   const matrixView = document.getElementById("matrix-view");
   const viewToggleButtons = document.querySelectorAll(".view-toggle .btn");
+  const taskSortSelect = document.getElementById("task-sort");
 
   const matrixZones = {
     "important-urgent": document.getElementById("zone-important-urgent"),
@@ -239,6 +241,21 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!status) return "";
     const normalized = status.toLowerCase();
     return STATUS_LABELS[normalized] || normalized;
+  }
+
+  function computePriorityBucket(task) {
+    let daysDiff = null;
+    if (task.data_limite) {
+      const limit = new Date(task.data_limite);
+      daysDiff = Math.ceil((limit - new Date()) / (1000 * 60 * 60 * 24));
+    }
+    const isUrgent = daysDiff !== null && daysDiff <= 2;
+    const isImportant = task.status === "em_andamento" || (daysDiff !== null && daysDiff <= 7);
+
+    if (isImportant && isUrgent) return 0;
+    if (isImportant && !isUrgent) return 1;
+    if (!isImportant && isUrgent) return 2;
+    return 3;
   }
 
   function setStatusFilter(value) {
@@ -396,10 +413,44 @@ document.addEventListener("DOMContentLoaded", () => {
     updateTaskSummary(tasks);
     renderMatrix(tasks);
 
-    tasks
-      .slice()
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-      .forEach((task) => {
+    const sorted = tasks.slice().sort((a, b) => {
+      if (state.sort === "recent") {
+        return new Date(b.created_at) - new Date(a.created_at);
+      }
+
+      if (state.sort === "priority") {
+        const pa = computePriorityBucket(a);
+        const pb = computePriorityBucket(b);
+        if (pa !== pb) return pa - pb;
+        return new Date(a.data_limite || a.created_at) - new Date(b.data_limite || b.created_at);
+      }
+
+      if (state.sort === "urgent") {
+        const ua = computePriorityBucket(a) % 2 === 0 ? 0 : 1;
+        const ub = computePriorityBucket(b) % 2 === 0 ? 0 : 1;
+        if (ua !== ub) return ua - ub;
+        return new Date(a.data_limite || a.created_at) - new Date(b.data_limite || b.created_at);
+      }
+
+      if (state.sort === "important") {
+        const ia = computePriorityBucket(a) < 2 ? 0 : 1;
+        const ib = computePriorityBucket(b) < 2 ? 0 : 1;
+        if (ia !== ib) return ia - ib;
+        return new Date(a.data_limite || a.created_at) - new Date(b.data_limite || b.created_at);
+      }
+
+      if (state.sort === "status") {
+        const order = { pendente: 0, em_andamento: 1, concluida: 2 };
+        const sa = order[a.status] ?? 3;
+        const sb = order[b.status] ?? 3;
+        if (sa !== sb) return sa - sb;
+        return new Date(b.created_at) - new Date(a.created_at);
+      }
+
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    sorted.forEach((task) => {
         const li = document.createElement("li");
         li.className = "task-item";
 
@@ -936,6 +987,11 @@ document.addEventListener("DOMContentLoaded", () => {
   reloadButton.addEventListener("click", () => {
     clearMessages();
     loadAndRenderTasks();
+  });
+
+  taskSortSelect.addEventListener("change", () => {
+    state.sort = taskSortSelect.value || "recent";
+    renderTasks();
   });
 
   // ----------------------
